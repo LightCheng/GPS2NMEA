@@ -1,0 +1,18 @@
+# ignore VC2010 project config and ojec files.
+GPS2NMEA.sln
+GPS2NMEA.vsmdi
+Local.testsettings
+TraceAndTestImpact.testsettings
+TestResults/
+GPS2NMEA.suo
+GPS2NMEA/obj
+GPS2NMEA/obj
+GPS2NMEA/My\ Project/
+GPS2NMEA/bin/
+GPS2NMEA/GPS2NMEA_TemporaryKey.pfx
+GPS2NMEA/GPS2NMEA.vbproj.user
+GPS2NMEA/GPS2NMEA.vbproj
+GPS2NMEA/ApplicationEvents.vb
+GPSParserTestProject/
+#Ignore all files whose names end with a tilde (~), which is used by many text editors to mark temporary files.
+*~
