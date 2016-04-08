@@ -3,10 +3,10 @@ Imports Microsoft.VisualBasic.PowerPacks
 Imports System.Drawing.Drawing2D
 
 Public Module GlobalVariables
-    'Public nmea_data As String = Directory.GetCurrentDirectory() + "\nmea_out.txt"
-    'Public mtk_data As String = Directory.GetCurrentDirectory() + "\mtk_out.txt"
-    Public nmea_data As String = "C:\Documents and Settings\All Users\Documents\GPSTemp\nmea_out.txt"
-    Public mtk_data As String = "C:\Documents and Settings\All Users\Documents\GPSTemp\mtk_out.txt"
+    Public tempDIR As String = Directory.GetCurrentDirectory() + "\GPSTemp"
+    Public extracted_nmea_data As String = tempDIR + "\nmea_out.txt"
+    Public extracted_mtk_data As String = tempDIR + "\mtk_out.txt"
+
     Public totaltick As Integer = 0
     Public fileReader As System.IO.StreamReader
     Public stringReader As String
@@ -19,6 +19,7 @@ Public Module GlobalVariables
     Public blackBrush As New Drawing.SolidBrush(Color.Black)
     Public fontObj As Font = New System.Drawing.Font("Calibri", 10, FontStyle.Regular)
     Public InfofontObj As Font = New System.Drawing.Font("Calibri", 10, FontStyle.Bold)
+
     Public Structure Satellite_info
         Public Prn As Integer 'Satellite PRN ("pseudo-random noise" sequences) number (GPGSV)
         Public Elevation As Integer 'Elevation, degrees , 0 ~ 90 (GPGSV)
@@ -34,7 +35,6 @@ Public Module GlobalVariables
         Public VDOP As Double 'Vertical dilution of precision (GPGSA)
     End Structure
 
-    '////////////////////////////////////////////////////////////////////////
     Public Structure GGA
         Public strUtcTime As String
         Public varLatitude As Object
@@ -53,6 +53,7 @@ Public Module GlobalVariables
         Public strchecksum As String
         Public strTerminator As String
     End Structure
+
     Public Structure VTG
         Public strCourse1 As String
         Public strReference1 As String
@@ -96,6 +97,7 @@ Public Module GlobalVariables
         Public mMaxSNR As Integer
         Public mMinSNR As Integer
     End Structure
+
     'GSV info from GLONASS
     Public Structure GL_GSV
         Public StrTotalNoMessages As String
@@ -135,7 +137,6 @@ Public Module GlobalVariables
         Public mGLGSV As GL_GSV
         Public mGPGSV As GP_GSV
     End Structure
-
 
     Public Structure all_nmea_info
         Public mGGA As GGA
@@ -187,17 +188,15 @@ Public Module GlobalVariables
     Public mMaxInViewSatNumber As Integer = 0
 End Module
 
-
 Public Class Main_Form
     Private Sub Main_Form_Load(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles MyBase.Load
         StatusControl1.TabPages.Remove(Others)
         StatusControl1.TabPages.Remove(SatelliteNum)
-
         MTK_Info_CheckBox.Enabled = False
         MTKTableLayoutPanel.Hide()
         ProgressBar1.Hide()
         Label1.Text = "Open log file from Menu -> File -> Open" 'Directory.GetCurrentDirectory()
-        Me.DoubleBuffered = True
+        'Me.DoubleBuffered = True
         KeyPreview = True
         blackPen.Alignment = PenAlignment.Inset
         redPen.Alignment = PenAlignment.Inset
@@ -232,28 +231,6 @@ Public Class Main_Form
         InitProcess()
     End Sub
 
-    Private Function IsNeededData(ByVal sentence As String) As Boolean
-        Dim NeededArray(,) As String = {
-            {"$GPGGA", "provides the current Fix data"},
-            {"$GNGGA", "provides the current Fix data"},
-            {"$GPRMC", "provides the minimum gps sentences information"},
-            {"$GPGSA", "provides the Satellite status data"},
-            {"$GNGSA", "provides the Satellite status data , include GPS & GLONASS system"},
-            {"$GPGSV", "Satellites in view, GPS system"},
-            {"$GLGSV", "Satellites in view, GLONASS system"},
-            {"$GPACCURACY", "MTK only , accuracy info from GPS driver."},
-            {"$GNACCURACY", "MTK only , accuracy info from GPS driver."},
-            {"$PMTKEPH", "MTK only , 判斷是即時接收解算下来的Almanac、或是透過EPP or HotStill"}}
-        Dim size As Integer = NeededArray.Length
-        For x = 0 To ((size / 2) - 1)
-            Dim tString As String = NeededArray(x, 0)
-            If sentence.Contains(NeededArray(x, 0)) = True Then
-                Return True
-            End If
-        Next
-        Return False
-    End Function
-
     Private Function InitUI() As Boolean
         If StatusControl1.TabPages.Contains(SatelliteNum) = False Then
             StatusControl1.TabPages.Insert(1, SatelliteNum)
@@ -268,7 +245,6 @@ Public Class Main_Form
         Return True
     End Function
 
-
     Private Function InitProcess() As Boolean
         Dim lineCount = File.ReadAllLines(Label1.Text).Length
         ProgressBar1.Value = 0
@@ -276,72 +252,15 @@ Public Class Main_Form
         ProgressBar1.Maximum = lineCount
         ProgressBar1.Value = 0
 
-        'name_data : nmea sentence string only
-        'mtk_data : PMKT debug info + GPGGA as time token
-        My.Computer.FileSystem.CreateDirectory("C:\Documents and Settings\All Users\Documents\GPSTemp")
-
-        fileReader = My.Computer.FileSystem.OpenTextFileReader(Label1.Text)
-        Dim out_file = My.Computer.FileSystem.OpenTextFileWriter(nmea_data, False)
-        Dim mtk_out_file = My.Computer.FileSystem.OpenTextFileWriter(mtk_data, False)
         total_nmea_cnt = 0
         AGPS_TYPE.Text = ""
 
-        Do While fileReader.Peek() > -1
-            stringReader = fileReader.ReadLine()
-            Dim TestPos As Integer = InStr(stringReader, "$G")
-            If TestPos > 1 Then  'For some log not start by "$G" , such as MTK main log.
-                Dim tempString As String = stringReader.Substring(TestPos - 1)
-                stringReader = tempString
-            End If
-            If IsNeededData(stringReader) = True Then
-                out_file.WriteLine(stringReader)
-                If stringReader.Contains("$GPGGA") Or stringReader.Contains("$GNGGA") Then
-                    total_nmea_cnt += 1
-                End If
-            End If
-            'Add GPGGA as time token for MTK info
-            If stringReader.Contains("PMTK") Or stringReader.Contains("$GPGGA") Or stringReader.Contains("$GNGGA") Or stringReader.Contains("ClkType") Then
-                mtk_out_file.WriteLine(stringReader)
-                'Check PMTK013 for GPS clock source info , 254:co-clock , 255:TCXO
-                'with co-clock , C0 : (+-5) , C1 : (-0.1 ~ -0.35) , if c1 or c2 = 0 means no calibration
-                If stringReader.Contains("ClkType") Then
-                    Dim i As Integer = stringReader.IndexOf("ClkType")
-                    If Mid(stringReader, i + 9, 3) = "254" Then
-                        'i = stringReader.IndexOf("C0")
-                        'Dim j As Integer = stringReader.IndexOf("C1")
-                        'Dim tempString As String = "co-Clock " + Mid(stringReader, i + 3, 8) + "/" + Mid(stringReader, j + 3, 8)
-                        CLK_TYPE.Text = "co-Clock"
-                    ElseIf Mid(stringReader, i + 9, 3) = "255" Then
-                        CLK_TYPE.Text = "TCXO"
-                    Else
-                    End If
-                    If MTK_Info_CheckBox.Checked = False Then
-                        MTKTableLayoutPanel.Hide()
-                    End If
-                End If
-            End If
-            If stringReader.Contains("wkssi") Then
-                AGPS_TYPE.Text = AGPS_TYPE.Text + "[AGPS]"
-            ElseIf stringReader.Contains("wkbee") Then
-                AGPS_TYPE.Text = AGPS_TYPE.Text + "[Hotstill]"
-            ElseIf stringReader.Contains("wk,epo") Then
-                AGPS_TYPE.Text = AGPS_TYPE.Text + "[EPO]"
-            End If
-            ProgressBar1.Value += 1
-        Loop
-        out_file.Close()
-        mtk_out_file.Close()
-        fileReader.Close()
-        If File.ReadAllLines(mtk_data).Length > total_nmea_cnt Then
-            MTK_Info_CheckBox.Enabled = True
-        Else
-            MTK_Info_CheckBox.Enabled = False
-        End If
+        extraNmeaAndMTKfromLog(Label1.Text)
 
-        Dim TotalLines As Integer = File.ReadAllLines(nmea_data).Length
+        'Dim TotalLines As Integer = File.ReadAllLines(extracted_nmea_data).Length
         ReDim all_nmea_sentence_info(total_nmea_cnt)
         Total_data_number.Text = total_nmea_cnt
-        fileReader = My.Computer.FileSystem.OpenTextFileReader(nmea_data)
+        fileReader = My.Computer.FileSystem.OpenTextFileReader(extracted_nmea_data)
         Dim GP_index As Integer = 0
 
         Do While fileReader.Peek() > -1
@@ -385,6 +304,108 @@ Public Class Main_Form
         UpdateBasicInfoDashboard(1)
         SNRBARPictureBox.Refresh()
         SatViewPictureBox.Refresh()
+        Return False
+    End Function
+
+    Private Function extraNmeaAndMTKfromLog(ByVal filename As String) As Boolean
+        If Directory.Exists(tempDIR) = False Then
+            Directory.CreateDirectory(tempDIR)
+        End If
+        fileReader = My.Computer.FileSystem.OpenTextFileReader(filename)
+        Dim nmea_writer = My.Computer.FileSystem.OpenTextFileWriter(extracted_nmea_data, False)
+        Dim mtk_writer = My.Computer.FileSystem.OpenTextFileWriter(extracted_mtk_data, False)
+
+        Do While fileReader.Peek() > -1
+            stringReader = fileReader.ReadLine()
+            Dim TestPos As Integer = InStr(stringReader, "$G")
+            If TestPos > 1 Then  'For some log not start by "$G" , such as MTK main log.
+                Dim tempString As String = stringReader.Substring(TestPos - 1)
+                stringReader = tempString
+            End If
+
+            If IsNmeaNeededData(stringReader) = True Then
+                nmea_writer.WriteLine(stringReader)
+                If stringReader.Contains("GGA") Then
+                    total_nmea_cnt += 1
+                End If
+            End If
+
+            'Add GPGGA as time token for MTK info
+            If IsMtkNeededData(stringReader) = True Then
+                mtk_writer.WriteLine(stringReader)
+                'Check PMTK013 for GPS clock source info , 254:co-clock , 255:TCXO
+                'with co-clock , C0 : (+-5) , C1 : (-0.1 ~ -0.35) , if c1 or c2 = 0 means no calibration
+                If stringReader.Contains("ClkType") Then
+                    Dim i As Integer = stringReader.IndexOf("ClkType")
+                    If Mid(stringReader, i + 9, 3) = "254" Then
+                        CLK_TYPE.Text = "co-Clock"
+                    ElseIf Mid(stringReader, i + 9, 3) = "255" Then
+                        CLK_TYPE.Text = "TCXO"
+                    Else
+                        CLK_TYPE.Text = ""
+                    End If
+                End If
+            End If
+
+            If stringReader.Contains("wkssi") Then
+                AGPS_TYPE.Text = AGPS_TYPE.Text + "[AGPS]"
+            ElseIf stringReader.Contains("wkbee") Then
+                AGPS_TYPE.Text = AGPS_TYPE.Text + "[Hotstill]"
+            ElseIf stringReader.Contains("wk,epo") Then
+                AGPS_TYPE.Text = AGPS_TYPE.Text + "[EPO]"
+            End If
+            ProgressBar1.Value += 1
+        Loop
+
+        If CLK_TYPE.Text.Length = 0 Then
+            MTK_Info_CheckBox.Enabled = False
+        Else
+            MTK_Info_CheckBox.Enabled = True
+            If MTK_Info_CheckBox.Checked = False Then
+                MTKTableLayoutPanel.Hide()
+            End If
+        End If
+
+        nmea_writer.Close()
+        mtk_writer.Close()
+        fileReader.Close()
+        Return False
+    End Function
+    Private Function IsNmeaNeededData(ByVal sentence As String) As Boolean
+        Dim NeededArray(,) As String = {
+            {"$GP", "Global Positioning System receiver"},
+            {"$GA", "Galileo Positioning System"},
+            {"$GL", "GLONASS, according to IEIC 61162-1"},
+            {"$GN", "Mixed GPS and GLONASS data, according to IEIC 61162-1"},
+            {"$GB", "BeiDou (China)"},
+            {"$BD", "BeiDou (China)"},
+            {"$QZ", "QZSS regional GPS augmentation system (Japan)"}}
+        '{"$PMTKEPH", "MTK only , 判斷是即時接收解算下来的Almanac、或是透過EPP or HotStill"}}
+        Dim size As Integer = NeededArray.Length
+        For x = 0 To ((size / 2) - 1)
+            Dim tString As String = NeededArray(x, 0)
+            If sentence.Contains(NeededArray(x, 0)) = True Then
+                Return True
+            End If
+        Next
+        Return False
+    End Function
+
+    Private Function IsMtkNeededData(ByVal sentence As String) As Boolean
+        Dim NeededArray(,) As String = {
+            {"PMTK", "Global Positioning System receiver"},
+            {"$GPGGA", "Galileo Positioning System"},
+            {"$GNGGA", "GLONASS, according to IEIC 61162-1"},
+            {"ClkType", "Mixed GPS and GLONASS data, according to IEIC 61162-1"},
+            {"$PMTKEPH", "MTK only , 判斷是即時接收解算下来的Almanac、或是透過EPP or HotStill"}}
+
+        Dim size As Integer = NeededArray.Length
+        For x = 0 To ((size / 2) - 1)
+            Dim tString As String = NeededArray(x, 0)
+            If sentence.Contains(NeededArray(x, 0)) = True Then
+                Return True
+            End If
+        Next
         Return False
     End Function
 
@@ -468,7 +489,6 @@ Public Class Main_Form
             Satellite_PB.Refresh()
         End If
     End Sub
-
 
     Private Sub SatViewPictureBox_Paint(ByVal sender As System.Object, ByVal e As System.Windows.Forms.PaintEventArgs) Handles SatViewPictureBox.Paint
         Dim Display_width = SatViewPictureBox.Width
@@ -1070,7 +1090,6 @@ Public Class Main_Form
                 mCurrent_nmea_info.mAllGSV.mGPGSV.mMinSNR = min
         End Select
     End Sub
-
 
     'By index to get Satallite SNR value , if it be used , its ID , Azimuth and elevation
     Private Function GetSNRByIndex(ByVal index As Integer, ByRef beUsed As Boolean, ByRef mSatID As Integer, ByRef Azimuth As String, ByRef mStrElevation As String, ByVal mIndex As Integer) As Integer
