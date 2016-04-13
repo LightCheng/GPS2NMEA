@@ -29,12 +29,6 @@ Public Module GlobalVariables
         Public UsedInFix As Boolean 'If be used to compute the most recent fix (GPGSA)
     End Structure
 
-    Public Structure DOP_info
-        Public PDOP As Double 'dilution of precision (GPGSA)
-        Public HDOP As Double 'Horizontal dilution of precision (GPGSA)
-        Public VDOP As Double 'Vertical dilution of precision (GPGSA)
-    End Structure
-
     Public Structure GGA
         Public strUtcTime As String
         Public varLatitude As Object
@@ -146,7 +140,25 @@ Public Module GlobalVariables
         Public mAccuracy As Double
         Public mEPH As String
         Public mGSA_GN As GSA_GN
+        Public mGSA_Info As GSA_Info
     End Structure
+
+    Public Structure single_completed_nmea_info
+        Public GSA As GSA_Info
+        Public GSV As GSV_info
+        Public GGA As GGA_info
+        Public RMC As RMC_info
+    End Structure
+
+    Enum Talker_ID
+        GP   'GPS
+        GA   'Galileo
+        GL   'Glonass
+        GN   'Mix
+        GB   'Beidou
+        BD   'Beidou
+        QZ   'Japan
+    End Enum
 
     Public MTKGPSArray(,) As String = {
             {"PMTK010", "Check if GPS works"},
@@ -175,11 +187,10 @@ Public Module GlobalVariables
     'MTK_AGNSS_DT_LOC_EST_T     rGnssLoc;       // PMTK761
     'MTK_AGNSS_DT_MEAS_T        rGnssPRM;       // PMTK763
     'MTK_AGNSS_DT_CAPBILITY_T   rGnssCap;       // PMTK764
-
-    Public all_nmea_sentence_info(256) As all_nmea_info
     Public total_nmea_cnt As Integer = 0
     Public current_nmea_cnt As Integer = 0
-
+    Public parsed_nmea_array(total_nmea_cnt) As all_nmea_info
+    Public TTD_parsed_nmea_array(total_nmea_cnt) As single_completed_nmea_info
     ' Public view_start_x As Double = (TabPage2.Width * 0.7) / 2 + 150
     '////////////////////////////////////////////////////////////////////////
     Public whitePen As New Pen(Color.FromArgb(255, 200, 200, 200), 1)
@@ -255,35 +266,39 @@ Public Class Main_Form
         total_nmea_cnt = 0
         AGPS_TYPE.Text = ""
 
-        extraNmeaAndMTKfromLog(Label1.Text)
+        total_nmea_cnt = extraNmeaAndMTKfromLog(Label1.Text)
 
         'Dim TotalLines As Integer = File.ReadAllLines(extracted_nmea_data).Length
-        ReDim all_nmea_sentence_info(total_nmea_cnt)
+        ReDim parsed_nmea_array(total_nmea_cnt)
+        ReDim TTD_parsed_nmea_array(total_nmea_cnt - 1)
+
+        initTTD_parsed_nmea_array(extracted_nmea_data)
         Total_data_number.Text = total_nmea_cnt
         fileReader = My.Computer.FileSystem.OpenTextFileReader(extracted_nmea_data)
         Dim GP_index As Integer = 0
 
         Do While fileReader.Peek() > -1
             stringReader = fileReader.ReadLine()
-            If stringReader.Contains("$GPGGA") Or stringReader.Contains("$GNGGA") Then
+            If stringReader.Contains("$G") And stringReader.Contains("RMC") Then
                 GP_index += 1
             End If
             If stringReader.Contains("$GPGSV") Then
                 Dim tempArray() As String = Split(stringReader, ",")
                 'tempArray(3) : total sat# in view.
                 If tempArray(2) = 1 Then 'redefine SV array only need at 1st page
-                    ReDim all_nmea_sentence_info(GP_index).mAllGSV.mGPGSV.mSV(tempArray(3))
+                    ReDim parsed_nmea_array(GP_index).mAllGSV.mGPGSV.mSV(tempArray(3))
                 End If
             End If
             If stringReader.Contains("$GLGSV") Then
                 Dim tempArray() As String = Split(stringReader, ",")
                 'tempArray(3) : total sat# in view.
                 If tempArray(2) = 1 Then 'redefine SV array only need at 1st page
-                    ReDim all_nmea_sentence_info(GP_index).mAllGSV.mGLGSV.mSV(tempArray(3))
+                    ReDim parsed_nmea_array(GP_index).mAllGSV.mGLGSV.mSV(tempArray(3))
                 End If
             End If
-            ParseSentence(stringReader, all_nmea_sentence_info(GP_index))
+            ParseSentence(stringReader, parsed_nmea_array(GP_index))
         Loop
+
         fileReader.Close()
         ProgressBar1.Hide()
         current_nmea_cnt = 0
@@ -295,27 +310,62 @@ Public Class Main_Form
             Status_Page.Refresh()
             Return False
         End If
-        mTotalSatellites = CInt(all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGPGSV.StrSatsinview) + CInt(all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGLGSV.StrSatsinview) + CInt(all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mBDGSV.StrSatsinview)
+
+        'mTotalSatellites = CInt(parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGPGSV.StrSatsinview) + CInt(parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGLGSV.StrSatsinview) + CInt(parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mBDGSV.StrSatsinview)
+        mTotalSatellites = TTD_parsed_nmea_array(current_nmea_cnt + 1).GSV.getTotalSateInViewNumber()
+
         'Init scrollbar range.
-        HScrollBar1.Maximum = GP_index - 1
+        HScrollBar1.Maximum = TTD_parsed_nmea_array.Length - 1
         HScrollBar1.Minimum = 0
         HScrollBar1.Value = 0
 
         UpdateBasicInfoDashboard(1)
         SNRBARPictureBox.Refresh()
         SatViewPictureBox.Refresh()
+        Return True
+    End Function
+
+    Public Function initTTD_parsed_nmea_array(ByVal filename As String) As Boolean
+        fileReader = My.Computer.FileSystem.OpenTextFileReader(filename)
+        Dim currentDataIndex As Integer = 0
+        Do While fileReader.Peek() > -1
+            stringReader = fileReader.ReadLine()
+            Dim tempArray() As String = Split(stringReader, ",")
+            Select Case tempArray(0)
+                Case "$GPGSV", "$GLGSV", "$GNGSV"
+                    Dim pageOrderNumber = tempArray(2)
+                    If IsNothing(TTD_parsed_nmea_array(currentDataIndex).GSV) = True Then
+                        TTD_parsed_nmea_array(currentDataIndex).GSV = New GSV_info(stringReader)
+                    Else
+                        TTD_parsed_nmea_array(currentDataIndex).GSV.SetSubPage(stringReader)
+                    End If
+                Case "$GPGGA", "$GLGGA", "$GNGGA"
+                    TTD_parsed_nmea_array(currentDataIndex).GGA = New GGA_info(stringReader)
+                Case "$GPGSA", "$GLGSA"
+                    If IsNothing(TTD_parsed_nmea_array(currentDataIndex).GSA) = True Then
+                        TTD_parsed_nmea_array(currentDataIndex).GSA = New GSA_Info(stringReader)
+                    Else
+                        TTD_parsed_nmea_array(currentDataIndex).GSA.SetGLSentense(stringReader)
+                    End If
+                Case "$GPRMC", "$GLRMC", "$GNRMC"
+                    TTD_parsed_nmea_array(currentDataIndex).RMC = New RMC_info(stringReader)
+                    currentDataIndex += 1
+            End Select
+        Loop
+        fileReader.Close()
         Return False
     End Function
 
-    Private Function extraNmeaAndMTKfromLog(ByVal filename As String) As Boolean
+
+    Private Function extraNmeaAndMTKfromLog(ByVal filename As String) As Integer
         If Directory.Exists(tempDIR) = False Then
             Directory.CreateDirectory(tempDIR)
         End If
         fileReader = My.Computer.FileSystem.OpenTextFileReader(filename)
         Dim nmea_writer = My.Computer.FileSystem.OpenTextFileWriter(extracted_nmea_data, False)
         Dim mtk_writer = My.Computer.FileSystem.OpenTextFileWriter(extracted_mtk_data, False)
-
-        Do While fileReader.Peek() > -1
+        Dim validDataCount As Integer = 0
+        Do While fileReader.Peek() >= 0
             stringReader = fileReader.ReadLine()
             Dim TestPos As Integer = InStr(stringReader, "$G")
             If TestPos > 1 Then  'For some log not start by "$G" , such as MTK main log.
@@ -324,17 +374,21 @@ Public Class Main_Form
             End If
 
             If IsNmeaNeededData(stringReader) = True Then
-                nmea_writer.WriteLine(stringReader)
-                If stringReader.Contains("GGA") Then
-                    total_nmea_cnt += 1
+                Dim Pos As Integer = InStr(stringReader, "*")
+                If Pos > 0 Then
+                    nmea_writer.WriteLine(Strings.Left(stringReader, (Pos - 1)))
+                Else
+                    nmea_writer.WriteLine(stringReader)
+                End If
+                If stringReader.Contains("RMC") Then
+                    validDataCount += 1
                 End If
             End If
 
-            'Add GPGGA as time token for MTK info
+            'Add RMC as time token for MTK info
             If IsMtkNeededData(stringReader) = True Then
                 mtk_writer.WriteLine(stringReader)
-                'Check PMTK013 for GPS clock source info , 254:co-clock , 255:TCXO
-                'with co-clock , C0 : (+-5) , C1 : (-0.1 ~ -0.35) , if c1 or c2 = 0 means no calibration
+                'Check PMTK013/ClkType for GPS clock source info , 254:co-clock , 255:TCXO
                 If stringReader.Contains("ClkType") Then
                     Dim i As Integer = stringReader.IndexOf("ClkType")
                     If Mid(stringReader, i + 9, 3) = "254" Then
@@ -354,7 +408,6 @@ Public Class Main_Form
             ElseIf stringReader.Contains("wk,epo") Then
                 AGPS_TYPE.Text = AGPS_TYPE.Text + "[EPO]"
             End If
-            ProgressBar1.Value += 1
         Loop
 
         If CLK_TYPE.Text.Length = 0 Then
@@ -369,8 +422,9 @@ Public Class Main_Form
         nmea_writer.Close()
         mtk_writer.Close()
         fileReader.Close()
-        Return False
+        Return validDataCount
     End Function
+
     Private Function IsNmeaNeededData(ByVal sentence As String) As Boolean
         Dim NeededArray(,) As String = {
             {"$GP", "Global Positioning System receiver"},
@@ -380,10 +434,8 @@ Public Class Main_Form
             {"$GB", "BeiDou (China)"},
             {"$BD", "BeiDou (China)"},
             {"$QZ", "QZSS regional GPS augmentation system (Japan)"}}
-        '{"$PMTKEPH", "MTK only , 判斷是即時接收解算下来的Almanac、或是透過EPP or HotStill"}}
         Dim size As Integer = NeededArray.Length
         For x = 0 To ((size / 2) - 1)
-            Dim tString As String = NeededArray(x, 0)
             If sentence.Contains(NeededArray(x, 0)) = True Then
                 Return True
             End If
@@ -393,15 +445,12 @@ Public Class Main_Form
 
     Private Function IsMtkNeededData(ByVal sentence As String) As Boolean
         Dim NeededArray(,) As String = {
-            {"PMTK", "Global Positioning System receiver"},
-            {"$GPGGA", "Galileo Positioning System"},
-            {"$GNGGA", "GLONASS, according to IEIC 61162-1"},
-            {"ClkType", "Mixed GPS and GLONASS data, according to IEIC 61162-1"},
+            {"PMTK", "MTK GPS info"},
+            {"RMC", ""},
+            {"ClkType", "254:co-clock , 255:TCXO"},
             {"$PMTKEPH", "MTK only , 判斷是即時接收解算下来的Almanac、或是透過EPP or HotStill"}}
-
         Dim size As Integer = NeededArray.Length
         For x = 0 To ((size / 2) - 1)
-            Dim tString As String = NeededArray(x, 0)
             If sentence.Contains(NeededArray(x, 0)) = True Then
                 Return True
             End If
@@ -410,11 +459,16 @@ Public Class Main_Form
     End Function
 
     Private Function UpdateBasicInfoDashboard(ByVal currentValue As Integer) As Boolean
-        UTC_data.Text = Mid(all_nmea_sentence_info(currentValue).mGGA.strUtcTime, 1, 2) + ":" + Mid(all_nmea_sentence_info(currentValue).mGGA.strUtcTime, 3, 2) + ":" + Mid(all_nmea_sentence_info(currentValue).mGGA.strUtcTime, 5, 2) 'all_nmea_sentence_info(currentValue).mGGA.strUtcTime
-        Latitude_data.Text = all_nmea_sentence_info(currentValue).mGGA.varLatitude + " " + all_nmea_sentence_info(currentValue).mGGA.strNSIndicator
-        Longitude_data.Text = all_nmea_sentence_info(currentValue).mGGA.varLongitude + " " + all_nmea_sentence_info(currentValue).mGGA.strEWIndicator
+        Dim data_index = currentValue - 1
+        'UTC_data.Text = Mid(parsed_nmea_array(currentValue).mGGA.strUtcTime, 1, 2) + ":" + Mid(parsed_nmea_array(currentValue).mGGA.strUtcTime, 3, 2) + ":" + Mid(parsed_nmea_array(currentValue).mGGA.strUtcTime, 5, 2) 'parsed_nmea_array(currentValue).mGGA.strUtcTime
+        UTC_data.Text = TTD_parsed_nmea_array(data_index).GGA.getUtcTime()
 
-        Select Case all_nmea_sentence_info(currentValue).mGSA.strFixType
+        'Latitude_data.Text = parsed_nmea_array(currentValue).mGGA.varLatitude + " " + parsed_nmea_array(currentValue).mGGA.strNSIndicator
+        Latitude_data.Text = TTD_parsed_nmea_array(data_index).GGA.getLatitude_NS()
+        'Longitude_data.Text = parsed_nmea_array(currentValue).mGGA.varLongitude + " " + parsed_nmea_array(currentValue).mGGA.strEWIndicator
+        Longitude_data.Text = TTD_parsed_nmea_array(data_index).GGA.getLongitide_EW()
+
+        Select Case TTD_parsed_nmea_array(data_index).GSA.FixMode
             Case 1
                 Fixed_T.Text = "No Fix"
             Case 2
@@ -423,11 +477,11 @@ Public Class Main_Form
                 Fixed_T.Text = "3D Fix"
         End Select
 
-        ACLabel.Text = all_nmea_sentence_info(currentValue).mAccuracy.ToString + " (m)"
+        ACLabel.Text = parsed_nmea_array(currentValue).mAccuracy.ToString + " (m)"
 
-        If IsNothing(all_nmea_sentence_info(currentValue).mEPH) <> True Then
-            Dim TestArray() As String = Split(all_nmea_sentence_info(currentValue).mEPH, ",")
-            Alma_Label.Text = "(" + TestArray(0) + ") : " + all_nmea_sentence_info(currentValue).mEPH.Substring(all_nmea_sentence_info(currentValue).mEPH.IndexOf(",") + 1)
+        If IsNothing(parsed_nmea_array(currentValue).mEPH) <> True Then
+            Dim TestArray() As String = Split(parsed_nmea_array(currentValue).mEPH, ",")
+            Alma_Label.Text = "(" + TestArray(0) + ") : " + parsed_nmea_array(currentValue).mEPH.Substring(parsed_nmea_array(currentValue).mEPH.IndexOf(",") + 1)
         End If
         Return True
     End Function
@@ -444,27 +498,29 @@ Public Class Main_Form
         Dim temp As String = HScrollBar1.ToString()
         current_nmea_cnt = HScrollBar1.Value
 
-        'By the new index , update UTC/Lat/Longitude data from array "all_nmea_sentence_info"
+        'By the new index , update UTC/Lat/Longitude data from array "parsed_nmea_array"
         UpdateBasicInfoDashboard(currentValue)
-        mTotalSatellites = CInt(all_nmea_sentence_info(currentValue).mAllGSV.mGPGSV.StrSatsinview) + CInt(all_nmea_sentence_info(currentValue).mAllGSV.mGLGSV.StrSatsinview) + CInt(all_nmea_sentence_info(currentValue).mAllGSV.mBDGSV.StrSatsinview)
+        mTotalSatellites = CInt(parsed_nmea_array(currentValue).mAllGSV.mGPGSV.StrSatsinview) + CInt(parsed_nmea_array(currentValue).mAllGSV.mGLGSV.StrSatsinview) + CInt(parsed_nmea_array(currentValue).mAllGSV.mBDGSV.StrSatsinview)
+        mTotalSatellites = TTD_parsed_nmea_array(HScrollBar1.Value).GSV.getTotalSateInViewNumber()
+
         If PDOPCB.Checked() = True Then
-            P_Value.Text = all_nmea_sentence_info(current_nmea_cnt + 1).mGSA.strPDOP
+            P_Value.Text = TTD_parsed_nmea_array(HScrollBar1.Value).GSA.PDOP
         End If
         If HDOPCB.Checked() = True Then
-            H_Value.Text = all_nmea_sentence_info(current_nmea_cnt + 1).mGSA.strHDOP
+            H_Value.Text = TTD_parsed_nmea_array(HScrollBar1.Value).GSA.HDOP
         End If
         If VDOPCB.Checked() = True Then
-            V_Value.Text = all_nmea_sentence_info(current_nmea_cnt + 1).mGSA.strVDOP
+            V_Value.Text = TTD_parsed_nmea_array(HScrollBar1.Value).GSA.VDOP
         End If
-
+        'getMaxSNR
         If SNRCheckBox.Checked() = True Then
-            Dim info As String = "Max : " + all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGPGSV.mMaxSNR.ToString + ";" + "Min : " + all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGPGSV.mMinSNR.ToString
+            Dim info As String = "Max : " + TTD_parsed_nmea_array(HScrollBar1.Value).GSV.getMaxSNR() + ";" + "Min : " + TTD_parsed_nmea_array(HScrollBar1.Value).GSV.getMinSNR()
             Dim g As Graphics = InfoPictureBox.CreateGraphics()
             g.Clear(Color.LightGray)
             g.DrawString(info, InfofontObj, Brushes.Black, 2, 5)
         End If
 
-        Select Case all_nmea_sentence_info(current_nmea_cnt + 1).mGSA.strFixType
+        Select Case TTD_parsed_nmea_array(HScrollBar1.Value).GSA.FixMode
             Case 1
                 Fixed_T.Text = "No Fix"
             Case 2
@@ -473,11 +529,11 @@ Public Class Main_Form
                 Fixed_T.Text = "3D Fix"
         End Select
 
-        ACLabel.Text = all_nmea_sentence_info(current_nmea_cnt + 1).mAccuracy.ToString + " (m)"
+        ACLabel.Text = parsed_nmea_array(current_nmea_cnt + 1).mAccuracy.ToString + " (m)"
 
-        If IsNothing(all_nmea_sentence_info(current_nmea_cnt + 1).mEPH) <> True Then
-            Dim TestArray() As String = Split(all_nmea_sentence_info(current_nmea_cnt + 1).mEPH, ",")
-            Alma_Label.Text = "(" + TestArray(0) + ") : " + all_nmea_sentence_info(current_nmea_cnt + 1).mEPH.Substring(all_nmea_sentence_info(current_nmea_cnt + 1).mEPH.IndexOf(",") + 1)
+        If IsNothing(parsed_nmea_array(current_nmea_cnt + 1).mEPH) <> True Then
+            Dim TestArray() As String = Split(parsed_nmea_array(current_nmea_cnt + 1).mEPH, ",")
+            Alma_Label.Text = "(" + TestArray(0) + ") : " + parsed_nmea_array(current_nmea_cnt + 1).mEPH.Substring(parsed_nmea_array(current_nmea_cnt + 1).mEPH.IndexOf(",") + 1)
         End If
 
         If StatusControl1.SelectedTab.Name = Status_Page.Name Then
@@ -559,8 +615,10 @@ Public Class Main_Form
             Return
         End If
 
-        For x = 1 To CInt(all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGPGSV.StrSatsinview)
+        For x = 1 To CInt(parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGPGSV.StrSatsinview)
+            'For x = 1 To TTD_parsed_nmea_array(current_nmea_cnt + 1).GSV.getTotalSateInViewNumber()
             mSNR = GetSNRByIndex(x, mbeUsed, mSataID, mStrAzimuth, mStrElevation, 0)
+
             If IsNothing(mStrAzimuth) <> True And CInt(mStrAzimuth) > 0 Then
                 Dim theta As Double = -(mStrAzimuth - RIGHT_ANGLE) 'theta : 0 ~ 359
                 Dim rad As Double = theta * Math.PI / STRAIGHT_ANGLE_D ' rad : 0 ~ 90
@@ -590,7 +648,7 @@ Public Class Main_Form
             End If
         Next
 
-        For x = 1 To CInt(all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGLGSV.StrSatsinview)
+        For x = 1 To CInt(parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGLGSV.StrSatsinview)
             mSNR = GetSNRByIndex(x, mbeUsed, mSataID, mStrAzimuth, mStrElevation, 1)
             If IsNothing(mStrAzimuth) <> True And CInt(mStrAzimuth) > 0 Then
                 Dim theta As Double = -(mStrAzimuth - RIGHT_ANGLE) 'theta : 0 ~ 359
@@ -670,10 +728,10 @@ Public Class Main_Form
 
         Dim strSateInView As String = "Satellite in View : " + mTotalSatellites.ToString
         e.Graphics.DrawString(strSateInView, fontObj, Brushes.Black, CInt(margin), SNRBARPictureBox.Height / 5)
-        strSateInView = "Satellite Used : " + (all_nmea_sentence_info(current_nmea_cnt).mGSA.mSANum + all_nmea_sentence_info(current_nmea_cnt).mGSA_GN.mSANum).ToString
+        strSateInView = "Satellite Used : " + (parsed_nmea_array(current_nmea_cnt).mGSA.mSANum + parsed_nmea_array(current_nmea_cnt).mGSA_GN.mSANum).ToString
         e.Graphics.DrawString(strSateInView, fontObj, Brushes.Black, CInt(margin), SNRBARPictureBox.Height / 4)
 
-        For x = 1 To CInt(all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGPGSV.StrSatsinview)
+        For x = 1 To CInt(parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGPGSV.StrSatsinview)
             Dim mSNR As Integer = 0
             Dim mbeUsed As Boolean = False
             Dim mSataID As Integer = 0
@@ -704,7 +762,7 @@ Public Class Main_Form
             End If
         Next
 
-        For x = 1 To CInt(all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGLGSV.StrSatsinview)
+        For x = 1 To CInt(parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGLGSV.StrSatsinview)
             'Signal strength bar
             Dim left As Double = margin + (drawn * slotWidth) + fill
             Dim top As Double = 0
@@ -764,12 +822,12 @@ Public Class Main_Form
         Next
 
         For x = 0 To (total_nmea_cnt - 1)
-            If (all_nmea_sentence_info(x + 1).mAllGSV.mGPGSV.StrSatsinview) > 0 Then
-                Dim sat_num_height As Integer = CInt(Satellite_PB.Height - (temp_h * all_nmea_sentence_info(x + 1).mAllGSV.mGPGSV.StrSatsinview) + Y_offset) - 3
+            If (parsed_nmea_array(x + 1).mAllGSV.mGPGSV.StrSatsinview) > 0 Then
+                Dim sat_num_height As Integer = CInt(Satellite_PB.Height - (temp_h * parsed_nmea_array(x + 1).mAllGSV.mGPGSV.StrSatsinview) + Y_offset) - 3
                 e.Graphics.FillEllipse(Brushes.Red, CInt(start_offset_x + (x * interval_width)) + 2, sat_num_height - 1, 2, 3)
 
-                If (all_nmea_sentence_info(x + 1).mGSA.mSANum) > 0 Then
-                    sat_num_height = CInt(Satellite_PB.Height - (temp_h * all_nmea_sentence_info(x + 1).mGSA.mSANum) + Y_offset) - 3
+                If (parsed_nmea_array(x + 1).mGSA.mSANum) > 0 Then
+                    sat_num_height = CInt(Satellite_PB.Height - (temp_h * parsed_nmea_array(x + 1).mGSA.mSANum) + Y_offset) - 3
                     e.Graphics.FillEllipse(Brushes.Blue, CInt(start_offset_x + (x * interval_width)) + 2, sat_num_height - 1, 2, 3)
                 End If
             End If
@@ -812,7 +870,7 @@ Public Class Main_Form
             e.Graphics.DrawString("20dB", FixedfontObj, Brushes.Black, start_offset_x, MaxMinSNR_PB.Height - (20 * mOffset) - 20)
         End If
         For x = 0 To (total_nmea_cnt - 1)
-            Select Case all_nmea_sentence_info(x).mGSA.strFixType
+            Select Case parsed_nmea_array(x).mGSA.strFixType
                 Case 1
                     'e.Graphics.FillEllipse(greenBrush, CInt(start_offset_x + (x * interval_width)), CInt(Label_NoFix.Location.Y + 2), 3, 5)
                 Case 2
@@ -822,8 +880,8 @@ Public Class Main_Form
             End Select
 
             If SNRCheckBox.Checked() = True Then
-                Dim mMaxSNR As Integer = all_nmea_sentence_info(x + 1).mAllGSV.mGPGSV.mMaxSNR
-                Dim mMinSNR As Integer = all_nmea_sentence_info(x + 1).mAllGSV.mGPGSV.mMinSNR
+                Dim mMaxSNR As Integer = parsed_nmea_array(x + 1).mAllGSV.mGPGSV.mMaxSNR
+                Dim mMinSNR As Integer = parsed_nmea_array(x + 1).mAllGSV.mGPGSV.mMinSNR
                 Dim offset_y As Integer = MaxMinSNR_PB.Height - (mMaxSNR * mOffset)
                 e.Graphics.DrawRectangle(Pens.Blue, CInt(start_offset_x + (x * interval_width)), offset_y, 1, 1)
 
@@ -833,18 +891,18 @@ Public Class Main_Form
             End If
             Dim temp As Integer = MaxMinSNR_PB.Height / 12
 
-            If PDOPCB.Checked() = True And all_nmea_sentence_info(x + 1).mGSA.strPDOP <> "99.99" Then
-                Dim dop_start_offset_y As Integer = MaxMinSNR_PB.Height - all_nmea_sentence_info(x + 1).mGSA.strPDOP * temp
+            If PDOPCB.Checked() = True And parsed_nmea_array(x + 1).mGSA.strPDOP <> "99.99" Then
+                Dim dop_start_offset_y As Integer = MaxMinSNR_PB.Height - parsed_nmea_array(x + 1).mGSA.strPDOP * temp
                 e.Graphics.FillEllipse(redBrush, CInt(start_offset_x + (x * interval_width)), dop_start_offset_y, 2, 3)
             End If
 
-            If HDOPCB.Checked() = True And all_nmea_sentence_info(x + 1).mGSA.strHDOP <> "99.99" Then
-                Dim dop_start_offset_y As Integer = MaxMinSNR_PB.Height - all_nmea_sentence_info(x + 1).mGSA.strHDOP * temp
+            If HDOPCB.Checked() = True And parsed_nmea_array(x + 1).mGSA.strHDOP <> "99.99" Then
+                Dim dop_start_offset_y As Integer = MaxMinSNR_PB.Height - parsed_nmea_array(x + 1).mGSA.strHDOP * temp
                 e.Graphics.FillEllipse(blueBrush, CInt(start_offset_x + (x * interval_width)), dop_start_offset_y, 2, 3)
             End If
 
-            If VDOPCB.Checked() = True And all_nmea_sentence_info(x + 1).mGSA.strVDOP <> "99.99" Then
-                Dim dop_start_offset_y As Integer = MaxMinSNR_PB.Height - all_nmea_sentence_info(x + 1).mGSA.strVDOP * temp
+            If VDOPCB.Checked() = True And parsed_nmea_array(x + 1).mGSA.strVDOP <> "99.99" Then
+                Dim dop_start_offset_y As Integer = MaxMinSNR_PB.Height - parsed_nmea_array(x + 1).mGSA.strVDOP * temp
                 e.Graphics.FillEllipse(blackBrush, CInt(start_offset_x + (x * interval_width)), dop_start_offset_y, 2, 3)
             End If
         Next
@@ -861,7 +919,7 @@ Public Class Main_Form
 
     Private Sub PDOPCB_CheckedChanged(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles PDOPCB.CheckedChanged
         If PDOPCB.Checked() = True Then
-            P_Value.Text = all_nmea_sentence_info(current_nmea_cnt + 1).mGSA.strPDOP
+            P_Value.Text = parsed_nmea_array(current_nmea_cnt + 1).mGSA.strPDOP
         Else
             P_Value.Hide()
         End If
@@ -870,7 +928,7 @@ Public Class Main_Form
 
     Private Sub HDOPCB_CheckedChanged(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles HDOPCB.CheckedChanged
         If HDOPCB.Checked() = True Then
-            H_Value.Text = all_nmea_sentence_info(current_nmea_cnt + 1).mGSA.strHDOP
+            H_Value.Text = parsed_nmea_array(current_nmea_cnt + 1).mGSA.strHDOP
         Else
             H_Value.Hide()
         End If
@@ -879,7 +937,7 @@ Public Class Main_Form
 
     Private Sub VDOPCB_CheckedChanged(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles VDOPCB.CheckedChanged
         If VDOPCB.Checked() = True Then
-            V_Value.Text = all_nmea_sentence_info(current_nmea_cnt + 1).mGSA.strVDOP
+            V_Value.Text = parsed_nmea_array(current_nmea_cnt + 1).mGSA.strVDOP
         Else
             V_Value.Hide()
         End If
@@ -890,7 +948,7 @@ Public Class Main_Form
         Dim g As Graphics = InfoPictureBox.CreateGraphics()
         'DOPPage.Refresh()
         If SNRCheckBox.Checked() = True Then
-            Dim info As String = "Max : " + all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGPGSV.mMaxSNR.ToString + ";" + "Min : " + all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGPGSV.mMinSNR.ToString
+            Dim info As String = "Max : " + parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGPGSV.mMaxSNR.ToString + ";" + "Min : " + parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGPGSV.mMinSNR.ToString
             g.Clear(Color.LightGray)
             g.DrawString(info, InfofontObj, Brushes.Black, 2, 5)
         Else
@@ -1096,29 +1154,29 @@ Public Class Main_Form
         'mIndex : 0:GPS , 1:GLONASS , 2:BD
         Select Case mIndex
             Case 0 'GPS
-                mSatID = all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGPGSV.mSV(index - 1).Prn
-                Azimuth = all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGPGSV.mSV(index - 1).Azimuth
-                mStrElevation = all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGPGSV.mSV(index - 1).Elevation
+                mSatID = parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGPGSV.mSV(index - 1).Prn
+                Azimuth = parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGPGSV.mSV(index - 1).Azimuth
+                mStrElevation = parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGPGSV.mSV(index - 1).Elevation
 
                 beUsed = False
-                beUsed = all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGPGSV.mSV(index - 1).UsedInFix
-                Return all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGPGSV.mSV(index - 1).Snr
+                beUsed = parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGPGSV.mSV(index - 1).UsedInFix
+                Return parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGPGSV.mSV(index - 1).Snr
             Case 1 'GLONASS
-                mSatID = all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGLGSV.mSV(index - 1).Prn
-                Azimuth = all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGLGSV.mSV(index - 1).Azimuth
-                mStrElevation = all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGLGSV.mSV(index - 1).Elevation
+                mSatID = parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGLGSV.mSV(index - 1).Prn
+                Azimuth = parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGLGSV.mSV(index - 1).Azimuth
+                mStrElevation = parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGLGSV.mSV(index - 1).Elevation
 
                 beUsed = False
-                beUsed = all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGLGSV.mSV(index - 1).UsedInFix
-                Return all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mGLGSV.mSV(index - 1).Snr
+                beUsed = parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGLGSV.mSV(index - 1).UsedInFix
+                Return parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mGLGSV.mSV(index - 1).Snr
             Case 2 'BD
-                mSatID = all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mBDGSV.mSV(index - 1).Prn
-                Azimuth = all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mBDGSV.mSV(index - 1).Azimuth
-                mStrElevation = all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mBDGSV.mSV(index - 1).Elevation
+                mSatID = parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mBDGSV.mSV(index - 1).Prn
+                Azimuth = parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mBDGSV.mSV(index - 1).Azimuth
+                mStrElevation = parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mBDGSV.mSV(index - 1).Elevation
 
                 beUsed = False
-                beUsed = all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mBDGSV.mSV(index - 1).UsedInFix
-                Return all_nmea_sentence_info(current_nmea_cnt + 1).mAllGSV.mBDGSV.mSV(index - 1).Snr
+                beUsed = parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mBDGSV.mSV(index - 1).UsedInFix
+                Return parsed_nmea_array(current_nmea_cnt + 1).mAllGSV.mBDGSV.mSV(index - 1).Snr
         End Select
 
         Return -1
