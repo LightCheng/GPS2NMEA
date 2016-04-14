@@ -3,7 +3,7 @@
 Public Class GSA_Info
     Public Selection_Mode As String
     Public FixMode As Byte '1 : No fixed , 2 : 2D fixed , 3 : 3D Fixed.
-    Public SA_ID(,) As Byte 'GP , GL ; 1 ~ 12 Satalites ID which be used for fixing position.
+    Public SA_ID(,) As Byte 'GP , GL , GB; 1 ~ 12 Satalites ID which be used for fixing position.
     Public PDOP As Decimal = 0D
     Public HDOP As Decimal = 0D
     Public VDOP As Decimal = 0D
@@ -20,7 +20,7 @@ Public Class GSA_Info
         PDOP = 0
         HDOP = 0
         VDOP = 0.0
-        SA_ID = New Byte(2, 12) {}
+        SA_ID = New Byte(3, 12) {}
     End Sub
 
     Public Sub New()
@@ -32,12 +32,14 @@ Public Class GSA_Info
             Dim tempArray() As String = Split(GSASENTENSE, ",")
             Selection_Mode = tempArray(1)
             FixMode = tempArray(2)
-            SA_ID = New Byte(2, 12) {}
+            SA_ID = New Byte(3, 12) {}
             For x = 0 To (11)
                 If GSASENTENSE.Contains("$GP") Then
                     Byte.TryParse(tempArray(3 + x), SA_ID(0, x))
                 ElseIf GSASENTENSE.Contains("$GL") Then
                     Byte.TryParse(tempArray(3 + x), SA_ID(1, x))
+                ElseIf GSASENTENSE.Contains("$GB") Then
+                    Byte.TryParse(tempArray(3 + x), SA_ID(2, x))
                 End If
             Next
             PDOP = tempArray(15)
@@ -48,19 +50,44 @@ Public Class GSA_Info
         End If
     End Sub
 
-    Public Sub SetGLSentense(ByVal GSASENTENSE As String)
+    Public Sub SetGXSentense(ByVal GSASENTENSE As String)
         If GSASENTENSE.Contains("$GL") And GSASENTENSE.Contains("GSA") Then
             Dim tempArray() As String = Split(GSASENTENSE, ",")
-            'Selection_Mode = tempArray(1)
-            'FixMode = tempArray(2)
-            'SA_ID = New Byte(2, 12) {}
             For x = 0 To (11)
                 If GSASENTENSE.Contains("$GP") Then
                     Byte.TryParse(tempArray(3 + x), SA_ID(0, x))
                 ElseIf GSASENTENSE.Contains("$GL") Then
                     Byte.TryParse(tempArray(3 + x), SA_ID(1, x))
+                ElseIf GSASENTENSE.Contains("$GB") Then
+                    Byte.TryParse(tempArray(3 + x), SA_ID(2, x))
                 End If
             Next
         End If
     End Sub
+
+    Public Function beUsedforFix(ByVal PRN As Byte) As Boolean
+        For x = 0 To 11
+            If SA_ID(0, x) = PRN Or SA_ID(1, x) = PRN Or SA_ID(2, x) = PRN Then
+                Return True
+            End If
+        Next
+        Return False
+    End Function
+
+    Public Function getUsedforFixNumber() As Byte
+        Dim beUsedFixedSatNumber As Byte = 0
+        For x = 0 To 11
+            If SA_ID(0, x) > 0 Then
+                beUsedFixedSatNumber += 1
+            End If
+            If SA_ID(1, x) > 0 Then
+                beUsedFixedSatNumber += 1
+            End If
+            If SA_ID(2, x) > 0 Then
+                beUsedFixedSatNumber += 1
+            End If
+        Next
+        Return beUsedFixedSatNumber
+    End Function
+
 End Class

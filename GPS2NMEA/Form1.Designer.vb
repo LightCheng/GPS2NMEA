@@ -183,10 +183,10 @@ Partial Class Main_Form
         '
         Me.TableLayoutPanel1.BackColor = System.Drawing.Color.LightGray
         Me.TableLayoutPanel1.ColumnCount = 4
-        Me.TableLayoutPanel1.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 40.54054!))
-        Me.TableLayoutPanel1.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 59.45946!))
-        Me.TableLayoutPanel1.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 73.0!))
-        Me.TableLayoutPanel1.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 151.0!))
+        Me.TableLayoutPanel1.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 31.06383!))
+        Me.TableLayoutPanel1.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 68.93617!))
+        Me.TableLayoutPanel1.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 74.0!))
+        Me.TableLayoutPanel1.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 118.0!))
         Me.TableLayoutPanel1.Controls.Add(Me.UTC, 0, 0)
         Me.TableLayoutPanel1.Controls.Add(Me.Label3, 0, 1)
         Me.TableLayoutPanel1.Controls.Add(Me.UTC_data, 1, 0)
@@ -201,7 +201,7 @@ Partial Class Main_Form
         Me.TableLayoutPanel1.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 53.7037!))
         Me.TableLayoutPanel1.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 46.2963!))
         Me.TableLayoutPanel1.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 21.0!))
-        Me.TableLayoutPanel1.Size = New System.Drawing.Size(380, 64)
+        Me.TableLayoutPanel1.Size = New System.Drawing.Size(428, 64)
         Me.TableLayoutPanel1.TabIndex = 0
         '
         'UTC
@@ -210,9 +210,9 @@ Partial Class Main_Form
         Me.UTC.Font = New System.Drawing.Font("Calibri", 9.75!, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
         Me.UTC.Location = New System.Drawing.Point(3, 0)
         Me.UTC.Name = "UTC"
-        Me.UTC.Size = New System.Drawing.Size(57, 15)
+        Me.UTC.Size = New System.Drawing.Size(34, 15)
         Me.UTC.TabIndex = 0
-        Me.UTC.Text = "UTC time"
+        Me.UTC.Text = "Time"
         '
         'Label3
         '
@@ -228,7 +228,7 @@ Partial Class Main_Form
         '
         Me.UTC_data.AutoSize = True
         Me.UTC_data.Font = New System.Drawing.Font("Calibri", 9.75!, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
-        Me.UTC_data.Location = New System.Drawing.Point(66, 0)
+        Me.UTC_data.Location = New System.Drawing.Point(76, 0)
         Me.UTC_data.Name = "UTC_data"
         Me.UTC_data.Size = New System.Drawing.Size(0, 15)
         Me.UTC_data.TabIndex = 3
@@ -237,7 +237,7 @@ Partial Class Main_Form
         '
         Me.Latitude_data.AutoSize = True
         Me.Latitude_data.Font = New System.Drawing.Font("Calibri", 9.75!, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
-        Me.Latitude_data.Location = New System.Drawing.Point(66, 23)
+        Me.Latitude_data.Location = New System.Drawing.Point(76, 23)
         Me.Latitude_data.Name = "Latitude_data"
         Me.Latitude_data.Size = New System.Drawing.Size(0, 15)
         Me.Latitude_data.TabIndex = 4
@@ -246,7 +246,7 @@ Partial Class Main_Form
         '
         Me.Longitude_data.AutoSize = True
         Me.Longitude_data.Font = New System.Drawing.Font("Calibri", 9.75!, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
-        Me.Longitude_data.Location = New System.Drawing.Point(66, 42)
+        Me.Longitude_data.Location = New System.Drawing.Point(76, 42)
         Me.Longitude_data.Name = "Longitude_data"
         Me.Longitude_data.Size = New System.Drawing.Size(0, 15)
         Me.Longitude_data.TabIndex = 2
@@ -257,7 +257,7 @@ Partial Class Main_Form
         Me.Label5.Font = New System.Drawing.Font("Calibri", 9.75!, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
         Me.Label5.Location = New System.Drawing.Point(3, 42)
         Me.Label5.Name = "Label5"
-        Me.Label5.Size = New System.Drawing.Size(55, 22)
+        Me.Label5.Size = New System.Drawing.Size(62, 15)
         Me.Label5.TabIndex = 8
         Me.Label5.Text = "Longitude"
         '
@@ -265,7 +265,7 @@ Partial Class Main_Form
         '
         Me.Label2.AutoSize = True
         Me.Label2.Font = New System.Drawing.Font("Calibri", 9.75!, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
-        Me.Label2.Location = New System.Drawing.Point(158, 0)
+        Me.Label2.Location = New System.Drawing.Point(238, 0)
         Me.Label2.Name = "Label2"
         Me.Label2.Size = New System.Drawing.Size(65, 15)
         Me.Label2.TabIndex = 9
@@ -275,7 +275,7 @@ Partial Class Main_Form
         '
         Me.Fixed_T.AutoSize = True
         Me.Fixed_T.Font = New System.Drawing.Font("Calibri", 9.75!, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
-        Me.Fixed_T.Location = New System.Drawing.Point(231, 0)
+        Me.Fixed_T.Location = New System.Drawing.Point(312, 0)
         Me.Fixed_T.Name = "Fixed_T"
         Me.Fixed_T.Size = New System.Drawing.Size(0, 15)
         Me.Fixed_T.TabIndex = 10
