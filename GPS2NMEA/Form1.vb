@@ -24,10 +24,15 @@ Public Module GlobalVariables
     Public redBrush As New Drawing.SolidBrush(Color.Red)
     Public blackBrush As New Drawing.SolidBrush(Color.Black)
 
+    Public GPSBrush As New Drawing.SolidBrush(Color.FromArgb(255, 255, 242, 0))
+    Public GlonassBrush As New Drawing.SolidBrush(Color.FromArgb(255, 0, 162, 232))
+    Public BeidouBrush As New Drawing.SolidBrush(Color.FromArgb(255, 200, 191, 231))
+    Public NoSignalBrush As New Drawing.SolidBrush(Color.FromArgb(255, 255, 255, 255))
+
     Public whitePen As New Pen(Color.FromArgb(255, 200, 200, 200), 2)
     Public blackPen As New Pen(Color.FromArgb(255, 0, 0, 0), 1)
     Public redPen As New Drawing.Pen(Color.FromArgb(255, 255, 0, 0), 1)
-    Public FixedModePen As New Pen(Color.FromArgb(255, 255, 255, 0), 3)
+    Public FixedModePen As New Pen(Color.FromArgb(255, 255, 0, 0), 4)
 
     Public fontObj As Font = New System.Drawing.Font("Calibri", 10, FontStyle.Regular)
     Public InfofontObj As Font = New System.Drawing.Font("Calibri", 10, FontStyle.Bold)
@@ -45,7 +50,6 @@ Public Class Main_Form
         StatusControl1.TabPages.Remove(SatelliteNum)
         MTK_Info_CheckBox.Enabled = False
         MTKTableLayoutPanel.Hide()
-        ProgressBar1.Hide()
         Label1.Text = "Open log file from Menu -> File -> Open" 'Directory.GetCurrentDirectory()
         KeyPreview = True
         blackPen.Alignment = PenAlignment.Inset
@@ -87,10 +91,11 @@ Public Class Main_Form
             If StatusControl1.TabPages.Contains(Others) = False Then
                 StatusControl1.TabPages.Insert(2, Others)
             End If
-            ProgressBar1.Show()
         Else
             StatusControl1.TabPages.Remove(Others)
             StatusControl1.TabPages.Remove(SatelliteNum)
+            MTK_Info_CheckBox.Enabled = False
+            MTKTableLayoutPanel.Hide()
             SatViewPictureBox.Refresh()
             SNRBARPictureBox.Refresh()
             HScrollBar1.Maximum = 0
@@ -99,20 +104,16 @@ Public Class Main_Form
             Status_Page.Refresh()
         End If
         StatusControl1.SelectTab(0)
-        mMaxInViewSatNumber = 0
         Return True
     End Function
 
     Private Function InitProcess() As Boolean
         total_nmea_cnt = 0
+        mMaxInViewSatNumber = 0
         total_nmea_cnt = extraNmeaAndMTKfromLog(Label1.Text)
 
-        ProgressBar1.Value = 0
-        ProgressBar1.Minimum = 0
-        ProgressBar1.Maximum = total_nmea_cnt
-        ProgressBar1.Value = 0
         AGPS_TYPE.Text = ""
-        MTK_Info_CheckBox.Enabled = False
+        'MTK_Info_CheckBox.Enabled = False
 
         If total_nmea_cnt = 0 Then
             Return False
@@ -120,7 +121,6 @@ Public Class Main_Form
         ReDim TTD_parsed_nmea_array(total_nmea_cnt)
         initTTD_parsed_nmea_array(extracted_nmea_data)
         Total_data_number.Text = total_nmea_cnt
-        ProgressBar1.Hide()
         current_nmea_cnt = 0
         If TTD_parsed_nmea_array.Length = 0 Then 'no valid info , the file may be an invalid file
             HScrollBar1.Maximum = 0
@@ -141,7 +141,6 @@ Public Class Main_Form
         SatViewPictureBox.Refresh()
         Return True
     End Function
-
     Public Function initTTD_parsed_nmea_array(ByVal filename As String) As Boolean
         fileReader = My.Computer.FileSystem.OpenTextFileReader(filename)
         Dim currentDataIndex As Integer = 0
@@ -158,22 +157,38 @@ Public Class Main_Form
                     End If
                 Case "$GPGGA", "$GLGGA", "$GNGGA"
                     TTD_parsed_nmea_array(currentDataIndex).GGA = New GGA_info(stringReader)
+                    If IsNothing(TTD_parsed_nmea_array(currentDataIndex).RMC) <> True Then
+                        If IsNothing(TTD_parsed_nmea_array(currentDataIndex).GSV) <> True Then
+                            mMaxInViewSatNumber = Math.Max(mMaxInViewSatNumber, TTD_parsed_nmea_array(currentDataIndex).GSV.getTotalSateInViewNumber())
+                        Else
+                            'seems lost some GSV info for this block so we init it by empty data.
+                            TTD_parsed_nmea_array(currentDataIndex).GSV = New GSV_info()
+                        End If
+                        currentDataIndex += 1
+                    End If
                 Case "$GPGSA", "$GLGSA", "$GBGSA"
-                    If IsNothing(TTD_parsed_nmea_array(currentDataIndex).GSA) = True Then
-                        TTD_parsed_nmea_array(currentDataIndex).GSA = New GSA_Info(stringReader)
-                    Else
-                        TTD_parsed_nmea_array(currentDataIndex).GSA.SetGXSentense(stringReader)
-                    End If
+                        If IsNothing(TTD_parsed_nmea_array(currentDataIndex).GSA) = True Then
+                            TTD_parsed_nmea_array(currentDataIndex).GSA = New GSA_Info(stringReader)
+                        Else
+                            TTD_parsed_nmea_array(currentDataIndex).GSA.SetGXSentense(stringReader)
+                        End If
                 Case "$GPRMC", "$GLRMC", "$GNRMC"
-                    TTD_parsed_nmea_array(currentDataIndex).RMC = New RMC_info(stringReader)
-                    mMaxInViewSatNumber = Math.Max(mMaxInViewSatNumber, TTD_parsed_nmea_array(currentDataIndex).GSV.getTotalSateInViewNumber())
-                    currentDataIndex += 1
-                Case "$GPACCURACY", "$GNACCURACY"
-                    If currentDataIndex = 0 Then
-                        TTD_parsed_nmea_array(currentDataIndex).Accuracy_MTK = tempArray(1)
-                    Else
-                        TTD_parsed_nmea_array(currentDataIndex - 1).Accuracy_MTK = tempArray(1)
+                        TTD_parsed_nmea_array(currentDataIndex).RMC = New RMC_info(stringReader)
+                        If IsNothing(TTD_parsed_nmea_array(currentDataIndex).GGA) <> True Then
+                        If IsNothing(TTD_parsed_nmea_array(currentDataIndex).GSV) <> True Then
+                            mMaxInViewSatNumber = Math.Max(mMaxInViewSatNumber, TTD_parsed_nmea_array(currentDataIndex).GSV.getTotalSateInViewNumber())
+                        Else
+                            'seems lost some GSV info for this block so we init it by empty data.
+                            TTD_parsed_nmea_array(currentDataIndex).GSV = New GSV_info()
+                        End If
+                        currentDataIndex += 1
                     End If
+                Case "$GPACCURACY", "$GNACCURACY"
+                        If currentDataIndex = 0 Then
+                            TTD_parsed_nmea_array(currentDataIndex).Accuracy_MTK = tempArray(1)
+                        Else
+                            TTD_parsed_nmea_array(currentDataIndex - 1).Accuracy_MTK = tempArray(1)
+                        End If
             End Select
         Loop
         fileReader.Close()
@@ -220,7 +235,7 @@ Public Class Main_Form
                     ElseIf Mid(stringReader, i + 9, 3) = "255" Then
                         CLK_TYPE.Text = "TCXO"
                     Else
-                        CLK_TYPE.Text = ""
+                        CLK_TYPE.Text = "No Info"
                     End If
                 ElseIf stringReader.Contains("$PMTKEPH") Then
                     Dim tempArray() As String = Split(stringReader, ",")
@@ -233,16 +248,18 @@ Public Class Main_Form
                 AGPS_TYPE.Text = AGPS_TYPE.Text + "[Hotstill]"
             ElseIf stringReader.Contains("wk,epo") Then
                 AGPS_TYPE.Text = AGPS_TYPE.Text + "[EPO]"
+            Else
+                AGPS_TYPE.Text = "No Info"
             End If
         Loop
 
-        If CLK_TYPE.Text.Length = 0 Then
-            MTK_Info_CheckBox.Enabled = False
-        Else
+        If stringReader.Contains("ACCURACY") Then
             MTK_Info_CheckBox.Enabled = True
-            If MTK_Info_CheckBox.Checked = False Then
-                MTKTableLayoutPanel.Hide()
-            End If
+            MTK_Info_CheckBox.Checked = True
+            MTKTableLayoutPanel.Show()
+        Else
+            MTK_Info_CheckBox.Enabled = False
+            MTKTableLayoutPanel.Hide()
         End If
 
         nmea_writer.Close()
@@ -312,32 +329,37 @@ Public Class Main_Form
         If e.NewValue <= 0 Then
             HScrollBar1.Value = 0
         End If
+
+        If HScrollBar1.Value <= 0 Then
+            current_nmea_cnt = 0
+        Else
+            current_nmea_cnt = HScrollBar1.Value - 1
+        End If
         Dim canvas As New ShapeContainer
         Dim theLine As New LineShape
-        Dim temp As String = HScrollBar1.ToString()
-        current_nmea_cnt = HScrollBar1.Value
         Total_data_number.Text = HScrollBar1.Value
         'By the new index , update UTC/Lat/Longitude data from array "parsed_nmea_array"
-        UpdateBasicInfoDashboard(HScrollBar1.Value)
+
+        UpdateBasicInfoDashboard(current_nmea_cnt)
 
         If PDOPCB.Checked() = True Then
-            P_Value.Text = TTD_parsed_nmea_array(HScrollBar1.Value).GSA.PDOP
+            P_Value.Text = TTD_parsed_nmea_array(current_nmea_cnt).GSA.PDOP
         End If
         If HDOPCB.Checked() = True Then
-            H_Value.Text = TTD_parsed_nmea_array(HScrollBar1.Value).GSA.HDOP
+            H_Value.Text = TTD_parsed_nmea_array(current_nmea_cnt).GSA.HDOP
         End If
         If VDOPCB.Checked() = True Then
-            V_Value.Text = TTD_parsed_nmea_array(HScrollBar1.Value).GSA.VDOP
+            V_Value.Text = TTD_parsed_nmea_array(current_nmea_cnt).GSA.VDOP
         End If
 
         If SNRCheckBox.Checked() = True Then
-            Dim info As String = "Max : " + TTD_parsed_nmea_array(HScrollBar1.Value).GSV.getMaxSNR() + ";" + "Min : " + TTD_parsed_nmea_array(HScrollBar1.Value).GSV.getMinSNR()
+            Dim info As String = "Max : " + TTD_parsed_nmea_array(current_nmea_cnt).GSV.getMaxSNR() + ";" + "Min : " + TTD_parsed_nmea_array(current_nmea_cnt).GSV.getMinSNR()
             Dim g As Graphics = InfoPictureBox.CreateGraphics()
             g.Clear(Color.LightGray)
             g.DrawString(info, InfofontObj, Brushes.Black, 2, 5)
         End If
 
-        Select Case TTD_parsed_nmea_array(HScrollBar1.Value).GSA.FixMode
+        Select Case TTD_parsed_nmea_array(current_nmea_cnt).GSA.FixMode
             Case 1
                 Fixed_T.Text = "No Fix"
             Case 2
@@ -423,6 +445,17 @@ Public Class Main_Form
         e.Graphics.DrawString("N[0]", SatfontObj, Brushes.Black, CInt(view_start_x + (radius / 2)) - 8, view_start_y - 18)
         e.Graphics.DrawString("S[180]", SatfontObj, Brushes.Black, CInt(view_start_x + (radius / 2)) - 15, CInt(view_start_y + radius) + 2)
 
+        Dim explainSymbleIconBase As Integer = 5
+        e.Graphics.FillEllipse(GPSBrush, CInt(Display_width / 20), explainSymbleIconBase, mSatallite_size, mSatallite_size)
+        e.Graphics.DrawString("GPS", SatfontObj, Brushes.Black, CInt(Display_width / 20) + mSatallite_size + 3, explainSymbleIconBase + 1)
+        e.Graphics.FillEllipse(GlonassBrush, CInt(Display_width / 20), CInt(explainSymbleIconBase + mSatallite_size * 1.5), mSatallite_size, mSatallite_size)
+        e.Graphics.DrawString("Glonass", SatfontObj, Brushes.Black, CInt(Display_width / 20) + mSatallite_size + 3, CInt(explainSymbleIconBase + mSatallite_size * 1.5) + 1)
+        e.Graphics.FillEllipse(BeidouBrush, CInt(Display_width / 20), explainSymbleIconBase + mSatallite_size * 3, mSatallite_size, mSatallite_size)
+        e.Graphics.DrawString("Beidou", SatfontObj, Brushes.Black, CInt(Display_width / 20) + mSatallite_size + 3, explainSymbleIconBase + (mSatallite_size * 3) + 1)
+
+        e.Graphics.FillEllipse(NoSignalBrush, CInt(Display_width / 20) + 80, explainSymbleIconBase, mSatallite_size, mSatallite_size)
+        e.Graphics.DrawString("No Signal", SatfontObj, Brushes.Black, CInt(Display_width / 20) + mSatallite_size + 83, explainSymbleIconBase + 1)
+
         If total_nmea_cnt <= 0 Then
             Return
         End If
@@ -447,12 +480,12 @@ Public Class Main_Form
                     Dim py As Double = Math.Round(t_centerY + t) - 18
 
                     If mbeUsed = True Then
-                        e.Graphics.FillEllipse(greenBrush, CInt(px), CInt(py), mSatallite_size, mSatallite_size)
+                        e.Graphics.FillEllipse(GPSBrush, CInt(px), CInt(py), mSatallite_size, mSatallite_size)
                         e.Graphics.DrawEllipse(FixedModePen, CInt(px), CInt(py), mSatallite_size + 2, mSatallite_size + 2)
                     ElseIf mSNR > 0 Then
-                        e.Graphics.FillEllipse(greenBrush, CInt(px), CInt(py), mSatallite_size, mSatallite_size)
+                        e.Graphics.FillEllipse(GPSBrush, CInt(px), CInt(py), mSatallite_size, mSatallite_size)
                     Else
-                        e.Graphics.FillEllipse(redBrush, CInt(px), CInt(py), mSatallite_size, mSatallite_size)
+                        e.Graphics.FillEllipse(NoSignalBrush, CInt(px), CInt(py), mSatallite_size, mSatallite_size)
                     End If
 
                     If mSataID.ToString().Length > 2 Then
@@ -463,6 +496,7 @@ Public Class Main_Form
                 End If
             Next
         End If
+
 
         If TTD_parsed_nmea_array(current_nmea_cnt).GSV.getGLSateInViewNumber() > 0 Then
             For x = 0 To (TTD_parsed_nmea_array(current_nmea_cnt).GSV.getGLSateInViewNumber() - 1)
@@ -480,12 +514,12 @@ Public Class Main_Form
                     Dim py As Double = Math.Round(t_centerY + t) - 18
 
                     If mbeUsed = True Then
-                        e.Graphics.FillRectangle(greenBrush, CInt(px), CInt(py), mSatallite_size, mSatallite_size)
-                        e.Graphics.DrawRectangle(FixedModePen, CInt(px - 1), CInt(py - 1), mSatallite_size + 2, mSatallite_size + 2)
+                        e.Graphics.FillEllipse(GlonassBrush, CInt(px), CInt(py), mSatallite_size, mSatallite_size)
+                        e.Graphics.DrawEllipse(FixedModePen, CInt(px), CInt(py), mSatallite_size + 2, mSatallite_size + 2)
                     ElseIf mSNR > 0 Then
-                        e.Graphics.FillRectangle(greenBrush, CInt(px), CInt(py), mSatallite_size, mSatallite_size)
+                        e.Graphics.FillEllipse(GlonassBrush, CInt(px), CInt(py), mSatallite_size, mSatallite_size)
                     Else
-                        e.Graphics.FillRectangle(redBrush, CInt(px), CInt(py), mSatallite_size, mSatallite_size)
+                        e.Graphics.FillEllipse(NoSignalBrush, CInt(px), CInt(py), mSatallite_size, mSatallite_size)
                     End If
 
                     If mSataID.ToString().Length > 2 Then

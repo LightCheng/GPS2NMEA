@@ -42,9 +42,9 @@ Public Class GSA_Info
                     Byte.TryParse(tempArray(3 + x), SA_ID(2, x))
                 End If
             Next
-            PDOP = tempArray(15)
-            HDOP = tempArray(16)
-            VDOP = tempArray(17)
+            Decimal.TryParse(tempArray(15), PDOP)
+            Decimal.TryParse(tempArray(16), HDOP)
+            Decimal.TryParse(tempArray(17), VDOP)
         Else
             EmptyInit()
         End If

@@ -31,6 +31,10 @@ Public Class GSV_info
         GB_Satelliate_info(0) = New GSV_Satellite_info()
     End Sub
 
+    Public Sub New()
+        EmptyInit()
+    End Sub
+
     Public Sub New(ByVal GSVSENTENSE As String)
         SetSubPage(GSVSENTENSE)
     End Sub
