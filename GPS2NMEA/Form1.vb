@@ -148,14 +148,14 @@ Public Class Main_Form
             stringReader = fileReader.ReadLine()
             Dim tempArray() As String = Split(stringReader, ",")
             Select Case tempArray(0)
-                Case "$GPGSV", "$GLGSV", "$GNGSV"
+                Case "$GPGSV", "$GLGSV", "$GBGSV", "$BDGSV", "$GNGSV"
                     Dim pageOrderNumber = tempArray(2)
                     If IsNothing(TTD_parsed_nmea_array(currentDataIndex).GSV) = True Then
                         TTD_parsed_nmea_array(currentDataIndex).GSV = New GSV_info(stringReader)
                     Else
                         TTD_parsed_nmea_array(currentDataIndex).GSV.SetSubPage(stringReader)
                     End If
-                Case "$GPGGA", "$GLGGA", "$GNGGA"
+                Case "$GPGGA", "$GLGGA", "$GBGGA", "$GNGGA"
                     TTD_parsed_nmea_array(currentDataIndex).GGA = New GGA_info(stringReader)
                     If IsNothing(TTD_parsed_nmea_array(currentDataIndex).RMC) <> True Then
                         If IsNothing(TTD_parsed_nmea_array(currentDataIndex).GSV) <> True Then
@@ -172,9 +172,9 @@ Public Class Main_Form
                         Else
                             TTD_parsed_nmea_array(currentDataIndex).GSA.SetGXSentense(stringReader)
                         End If
-                Case "$GPRMC", "$GLRMC", "$GNRMC"
-                        TTD_parsed_nmea_array(currentDataIndex).RMC = New RMC_info(stringReader)
-                        If IsNothing(TTD_parsed_nmea_array(currentDataIndex).GGA) <> True Then
+                Case "$GPRMC", "$GLRMC", "$GBRMC", "$GNRMC"
+                    TTD_parsed_nmea_array(currentDataIndex).RMC = New RMC_info(stringReader)
+                    If IsNothing(TTD_parsed_nmea_array(currentDataIndex).GGA) <> True Then
                         If IsNothing(TTD_parsed_nmea_array(currentDataIndex).GSV) <> True Then
                             mMaxInViewSatNumber = Math.Max(mMaxInViewSatNumber, TTD_parsed_nmea_array(currentDataIndex).GSV.getTotalSateInViewNumber())
                         Else
@@ -384,16 +384,6 @@ Public Class Main_Form
         Dim Display_width = SatViewPictureBox.Width
         Dim Display_height = SatViewPictureBox.Height
 
-        'Draw triangle for BD ?
-        'Dim poly(3) As PointF ', NumCoords As Long, hBrush As Long, hRgn As Long
-        'poly(1).X = 0
-        'poly(1).Y = 0
-        'poly(2).X = 0
-        'poly(2).Y = SatViewPictureBox.Height / 5
-        'poly(3).X = SatViewPictureBox.Width / 5
-        'poly(3).Y = SatViewPictureBox.Height / 5
-        'e.Graphics.DrawPolygon(Pens.AliceBlue, poly)
-
         Dim centerX As Double = Math.Floor(Display_width / 2)
         Dim centerY As Double = Math.Floor(Display_height / 2)
 
@@ -532,6 +522,40 @@ Public Class Main_Form
             Next
         End If
 
+        If TTD_parsed_nmea_array(current_nmea_cnt).GSV.getGBSateInViewNumber() > 0 Then
+            For x = 0 To (TTD_parsed_nmea_array(current_nmea_cnt).GSV.getGBSateInViewNumber() - 1)
+                mSNR = GetSNRByIndex(x, mbeUsed, mSataID, mStrAzimuth, mStrElevation, 1)
+                If IsNothing(mStrAzimuth) <> True And CInt(mStrAzimuth) > 0 Then
+                    Dim theta As Double = -(mStrAzimuth - RIGHT_ANGLE) 'theta : 0 ~ 359
+                    Dim rad As Double = theta * Math.PI / STRAIGHT_ANGLE_D ' rad : 0 ~ 90
+                    Dim a As Double = (RIGHT_ANGLE - mStrElevation) * view_scale * mSatallite_size_factor
+
+                    Dim t_centerX As Integer = centerX
+                    Dim t_centerY As Integer = centerY
+
+                    Dim px As Double = Math.Round(t_centerX + Math.Cos(rad) * a) - 18
+                    Dim t As Double = -Math.Sin(rad) * a
+                    Dim py As Double = Math.Round(t_centerY + t) - 18
+
+                    If mbeUsed = True Then
+                        e.Graphics.FillEllipse(BeidouBrush, CInt(px), CInt(py), mSatallite_size, mSatallite_size)
+                        e.Graphics.DrawEllipse(FixedModePen, CInt(px), CInt(py), mSatallite_size + 2, mSatallite_size + 2)
+                    ElseIf mSNR > 0 Then
+                        e.Graphics.FillEllipse(BeidouBrush, CInt(px), CInt(py), mSatallite_size, mSatallite_size)
+                    Else
+                        e.Graphics.FillEllipse(NoSignalBrush, CInt(px), CInt(py), mSatallite_size, mSatallite_size)
+                    End If
+
+                    If mSataID.ToString().Length > 2 Then
+                        e.Graphics.DrawString(mSataID, SatfontObj, Brushes.Black, CInt(px), CInt(py + mfont_offset_y))
+                    Else
+                        e.Graphics.DrawString(mSataID, SatfontObj, Brushes.Black, CInt(px + mfont_offset_x), CInt(py + mfont_offset_y))
+                    End If
+
+                End If
+            Next
+        End If
+
     End Sub
 
     Private Sub SNRBARPictureBox_Paint(ByVal sender As System.Object, ByVal e As System.Windows.Forms.PaintEventArgs) Handles SNRBARPictureBox.Paint
@@ -650,6 +674,42 @@ Public Class Main_Form
                     e.Graphics.DrawString(mSataID, fontObj, Brushes.Black, left + barWidth / 8, baseline + 5)
                     If x = 1 Then
                         e.Graphics.DrawString("GLONASS", fontObj, Brushes.Black, left + barWidth / 8, baseline + 25)
+                    End If
+                    e.Graphics.DrawString(mSNR, fontObj, Brushes.Black, left + barWidth / 8, top - 15)
+                    drawn += 1
+                End If
+            Next
+        End If
+
+        If TTD_parsed_nmea_array(current_nmea_cnt).GSV.getGBSateInViewNumber() > 0 Then
+            For x = 0 To (TTD_parsed_nmea_array(current_nmea_cnt).GSV.getGBSateInViewNumber() - 1)
+                'Signal strength bar
+                Dim left As Double = margin + (drawn * slotWidth) + fill
+                Dim top As Double = 0
+                Dim right As Double = left + barWidth
+                Dim center As Double = left + barWidth / 2
+                Dim tleft As Integer = left
+
+                Dim mSNR As Integer = 0
+                Dim mbeUsed As Boolean = False
+                Dim mSataID As Integer = 0
+                Dim mStrAzimuth As String = ""
+                Dim mStrElevation As String = ""
+
+                mSNR = GetSNRByIndex(x, mbeUsed, mSataID, mStrAzimuth, mStrElevation, 1)
+                If IsNothing(mStrAzimuth) <> True And CInt(mStrAzimuth) > 0 Then
+                    top = baseline - (mSNR * scale)
+                    If mbeUsed = True Then 'used for fixed , green
+                        e.Graphics.FillRectangle(UsedbarBrush, CInt(left), CInt(top), CInt(right) - CInt(left), CInt(baseline - top))
+                    ElseIf CInt(mStrAzimuth) > 0 And CInt(mStrElevation) > 0 Then 'SNR + valid Azimuth & Elevation but used for fixed , yellow
+                        e.Graphics.FillRectangle(unUsedbarBrush, CInt(left), CInt(top), CInt(right) - CInt(left), CInt(baseline - top))
+                    End If
+                    e.Graphics.DrawRectangle(blackPen, CInt(left), CInt(top), CInt(right) - CInt(left), CInt(baseline - top))
+
+                    e.Graphics.FillRectangle(Brushes.LightSkyBlue, CInt(left + barWidth / 8), CInt(baseline + 5), 20, 20)
+                    e.Graphics.DrawString(mSataID, fontObj, Brushes.Black, left + barWidth / 8, baseline + 5)
+                    If x = 1 Then
+                        e.Graphics.DrawString("Beidou", fontObj, Brushes.Black, left + barWidth / 8, baseline + 25)
                     End If
                     e.Graphics.DrawString(mSNR, fontObj, Brushes.Black, left + barWidth / 8, top - 15)
                     drawn += 1
